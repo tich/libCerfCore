@@ -70,7 +70,8 @@ public:
         cpu_state_->cp0_status = config_->StatusReset();
     }
 
-    cerfengine::MipsCp0Decision Decide(uint32_t rd) override {
+    cerfengine::MipsCp0Decision Decide(uint32_t rd, uint32_t sel) override {
+        if (sel != 0u) return {};
         cerfengine::MipsCp0Decision d;
         const int32_t off = RegOffset(rd);
         if (off < 0 || !config_->HasCp0Reg(rd)) {

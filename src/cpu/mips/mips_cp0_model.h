@@ -12,7 +12,7 @@ class MipsCp0Model : public Service {
 public:
     using Service::Service;
 
-    virtual cerfengine::MipsCp0Decision Decide(uint32_t rd) = 0;
+    virtual cerfengine::MipsCp0Decision Decide(uint32_t rd, uint32_t sel) = 0;
 
 protected:
     static bool RegWritable(uint32_t rd) {

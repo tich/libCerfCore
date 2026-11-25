@@ -28,6 +28,7 @@ constexpr std::pair<std::string_view, cerfengine::MipsIsaLevel> kIsaLevels[] = {
     {"mips1", cerfengine::MipsIsaLevel::kMips1},
     {"mips3", cerfengine::MipsIsaLevel::kMips3},
     {"mips4", cerfengine::MipsIsaLevel::kMips4},
+    {"mips32", cerfengine::MipsIsaLevel::kMips32},
 };
 
 constexpr std::pair<std::string_view, uint32_t> kMinPageShifts[] = {

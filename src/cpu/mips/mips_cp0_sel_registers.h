@@ -1,0 +1,17 @@
+#pragma once
+
+#include <cstdint>
+
+#include <cerfcore/core/service.h>
+#include <cerfengine/mips/mips_system_host.h>
+
+namespace cerfcore {
+
+class MipsCp0SelRegisters : public Service {
+public:
+    using Service::Service;
+
+    virtual cerfengine::MipsCp0Decision Decide(uint32_t rd, uint32_t sel) = 0;
+};
+
+}

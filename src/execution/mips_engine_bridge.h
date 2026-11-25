@@ -26,7 +26,7 @@ public:
     void DispatchTraceIter() override;
     void MapInjectionBand(uint32_t va, uint32_t pa, uint32_t size) override;
 
-    cerfengine::MipsCp0Decision MipsCp0(uint32_t rd) override;
+    cerfengine::MipsCp0Decision MipsCp0(uint32_t rd, uint32_t sel) override;
     void                        MipsReset(cerfengine::MipsCpuState* st) override;
 
 protected:

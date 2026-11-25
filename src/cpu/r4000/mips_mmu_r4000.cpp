@@ -10,6 +10,7 @@
 #include "../../socs/vr4121/vr4121_id.h"
 #include "../../socs/vr4122/vr4122_id.h"
 #include "../vr5500/vr5500_id.h"
+#include "../../socs/au1300/au1300_id.h"
 #include <cerfcore/core/cerf_emulator.h>
 
 namespace cerfcore {
@@ -40,7 +41,8 @@ public:
     bool ShouldRegister() override {
         const std::string_view soc = emu_.Get<BoardContext>().GetSocId();
         return soc == SocId::Vr4101 || soc == SocId::Vr4102 || soc == SocId::Vr4111 ||
-               soc == SocId::Vr4121 || soc == SocId::Vr4122 || soc == SocId::Vr5500;
+               soc == SocId::Vr4121 || soc == SocId::Vr4122 || soc == SocId::Vr5500 ||
+               soc == SocId::Au1300;
     }
 
     cerfengine::MipsTlbHooks Hooks() override {

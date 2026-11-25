@@ -10,12 +10,14 @@
 #include "../../socs/vr4121/vr4121_id.h"
 #include "../../socs/vr4122/vr4122_id.h"
 #include "../vr5500/vr5500_id.h"
+#include "../../socs/au1300/au1300_id.h"
 #include <cerfcore/core/cerf_emulator.h>
 #include <cerfengine/mips/mips_cpu.h>
 #include <cerfengine/mips/mips_cpu_state.h>
 #include "../../execution/mips_engine_bridge.h"
 #include "../mips/mips_core_clock.h"
 #include "../mips/mips_cp0_ops.h"
+#include "../mips/mips_cp0_sel_registers.h"
 #include "../mips_processor_config.h"
 
 namespace cerfcore {
@@ -62,7 +64,8 @@ public:
     bool ShouldRegister() override {
         const std::string_view soc = emu_.Get<BoardContext>().GetSocId();
         return soc == SocId::Vr4101 || soc == SocId::Vr4102 || soc == SocId::Vr4111 ||
-               soc == SocId::Vr4121 || soc == SocId::Vr4122 || soc == SocId::Vr5500;
+               soc == SocId::Vr4121 || soc == SocId::Vr4122 || soc == SocId::Vr5500 ||
+               soc == SocId::Au1300;
     }
 
     void OnReady() override {
@@ -76,7 +79,11 @@ public:
         ApplyColdReset();
     }
 
-    cerfengine::MipsCp0Decision Decide(uint32_t rd) override {
+    cerfengine::MipsCp0Decision Decide(uint32_t rd, uint32_t sel) override {
+        if (sel != 0u) {
+            auto* ext = emu_.TryGet<MipsCp0SelRegisters>();
+            return ext ? ext->Decide(rd, sel) : cerfengine::MipsCp0Decision{};
+        }
         cerfengine::MipsCp0Decision d;
         const int32_t off = RegOffset(rd);
         if (off < 0 || !config_->HasCp0Reg(rd)) {
