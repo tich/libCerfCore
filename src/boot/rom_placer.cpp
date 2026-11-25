@@ -98,6 +98,37 @@ bool RomPlacer::PlaceRomXips(const ParsedRom& rom, bool volatile_only) {
     return first_placed;
 }
 
+void RomPlacer::ApplyCopyTables(const ParsedRom& rom) {
+    auto& page_tables = emu_.Get<PageTableBuilder>();
+    auto& mem         = emu_.Get<EmulatedMemory>();
+
+    for (const auto& xip : rom.xips) {
+        const auto& h = xip.toc.romhdr;
+        if (h.ulCopyEntries == 0) continue;
+        for (uint32_t i = 0; i < h.ulCopyEntries; ++i) {
+            const uint32_t entry_va = h.ulCopyOffset + i * 16u;
+            const uint32_t entry_pa = page_tables.VaToPa(entry_va);
+            const uint32_t ul_source    = mem.ReadWord(entry_pa + 0u);
+            const uint32_t ul_dest      = mem.ReadWord(entry_pa + 4u);
+            const uint32_t ul_copy_len  = mem.ReadWord(entry_pa + 8u);
+            const uint32_t ul_dest_len  = mem.ReadWord(entry_pa + 12u);
+
+            const uint32_t src_pa = page_tables.VaToPa(ul_source);
+            const uint32_t dst_pa = page_tables.VaToPa(ul_dest);
+            if (ul_copy_len > 0) {
+                mem.CopyIn(dst_pa, mem.Translate(src_pa), ul_copy_len);
+            }
+            if (ul_dest_len > ul_copy_len) {
+                std::memset(mem.Translate(dst_pa) + ul_copy_len, 0, ul_dest_len - ul_copy_len);
+            }
+            LOG(Boot,
+                "RomPlacer %s: copy_table[%u] src=0x%08X dst=0x%08X "
+                "copy_len=0x%X dest_len=0x%X\n",
+                rom.filename.c_str(), i, ul_source, ul_dest, ul_copy_len, ul_dest_len);
+        }
+    }
+}
+
 void RomPlacer::PlaceB000FFSections(const ParsedRom& rom, bool volatile_only) {
     auto& page_tables = emu_.Get<PageTableBuilder>();
     auto& mem         = emu_.Get<EmulatedMemory>();
@@ -177,6 +208,7 @@ void RomPlacer::OnReady() {
     for (const auto& rom : parser.Loaded()) {
         if (PlaceRomXips(rom, false) && &rom == &parser.Primary())
             placed_primary_ = &rom.xips[0];
+        ApplyCopyTables(rom);
 
         if (rom.is_b000ff) {
             /* Add the section bytes past every XIP's physfirst..physlast (the
@@ -232,6 +264,7 @@ void RomPlacer::OnReady() {
     emu_.Get<GuestColdBoot>().RegisterReplay([this] {
         for (const auto& rom : emu_.Get<RomParserService>().Loaded()) {
             PlaceRomXips(rom, /*volatile_only=*/true);
+            ApplyCopyTables(rom);
             if (rom.is_b000ff)
                 PlaceB000FFSections(rom, /*volatile_only=*/true);
         }
