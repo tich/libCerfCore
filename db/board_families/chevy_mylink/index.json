@@ -1,0 +1,10 @@
+{
+  "name": "GM MyLink (2013 Chevrolet Volt)",
+  "soc_id": "au1300",
+  "notes": [
+    "SoC identification (Au1300, 24Kc-class MIPS32) and 800px-wide touchscreen layout (HardKeyTestDlg factory test dialog) came from decompiling the guest ROM's own AppMain.exe/MgrUSB.exe binaries, not a public datasheet.",
+    "No Au1300-specific register-level reference has been found; CP0 Config/Status values reuse the generic 24Kc-class MIPS32 defaults (QEMU target/mips/cpu-defs.c.inc, Linux arch/mips/include/asm/mipsregs.h) pending correction from real boot evidence."
+  ],
+  "ga_color_depth": 24,
+  "rom_placing_mode": "flat_container"
+}
