@@ -51,6 +51,18 @@ namespace cerfcore {
    reports is immediate relative to a boot-time poll, so it is modeled
    the same way, folded into the same always-ready-once-enabled value.
 
+   A third status bit, 1, is also modeled ready: psc_smbus.dll printed
+   "Failed waiting for DR" after PSC3/SMBus init (NKDbgPrintfW,
+   decompiled live - the message is not statically present in the
+   extracted PE, same reconstruction gap as other runtime-materialized
+   code this project has already hit), then continued its init sequence
+   regardless, with no evidence anything downstream needs real SMBus
+   transaction data this project could instead model behind that bit.
+   Confirmed empirically by bisection: bits 0+2 alone leave the message
+   printing; adding bit 1 (0x14's remaining low bit, "DR" - Data
+   Ready/Request in SMBus terms) removes it. Same always-ready-once-
+   enabled reasoning as bits 0 and 2.
+
    Only PSC_SEL, PSC_CTRL, the status bits above, and the three
    timing/divisor registers (stored but not yet interpreted) are modeled;
    every other PSC3 or I2C-core register (FIFO, transaction control,
@@ -69,7 +81,7 @@ constexpr uint32_t kRegTmr1  = 0x0Cu;
 constexpr uint32_t kRegStat  = 0x14u;
 constexpr uint32_t kRegTmr2  = 0x20u;
 constexpr uint32_t kCtrlEnable = 3u;
-constexpr uint32_t kStatReady  = (1u << 0) | (1u << 2);
+constexpr uint32_t kStatReady  = (1u << 0) | (1u << 1) | (1u << 2);
 
 class Au1300Psc3 : public Peripheral {
 public:
