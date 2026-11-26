@@ -25,26 +25,27 @@ namespace cerfcore {
    has already seen used for GPIC PINCFG and PSC_SEL writes (decompiled
    VA 0x80106100-0x801061A0, calling the same trampoline region as
    those - 0x8010B1EC vs. 0x80111DDC et al.), writing small constants
-   (1, 2, 3, 7, 15, 31) to +0x10 and +0x14, and 0 / 0x01FFFFFF to +0x0C,
-   across what looks like two branches of an if/else that both
-   converge on the same final write to +0x14 (value 15, the one this
-   project's halt actually hit - confirmed by the fatal's own
-   "pa=0x11003014" against this file's base of 0x11003000). No bit
-   pattern here matches anything
-   this project has confirmed (not a PSC_SEL mode+clock field, not a
-   GPIC bank mask, not an interrupt source number). Modeled as opaque
-   read/write state with no asserted identity - same convention
-   au1300_uart.h already uses for its own unconfirmed offsets - because
-   guessing a device name or register meaning here would be exactly
-   the kind of unverified claim this project's rules forbid. Every
-   offset beyond the three confirmed so far halts per FATAL-FIRST until
-   a real access to it is seen. */
+   (1, 2, 3, 7, 15, 31) to two repeated 3-word groups (+0x00/+0x04/+0x08
+   and +0x0C/+0x10/+0x14), with 0 / 0x01FFFFFF seen at the first word
+   of each group - i.e. this looks like two instances of the same
+   3-register layout, not one 6-register block. No bit pattern here
+   matches anything this project has confirmed (not a PSC_SEL
+   mode+clock field, not a GPIC bank mask, not an interrupt source
+   number). Modeled as opaque read/write state with no asserted
+   identity - same convention au1300_uart.h already uses for its own
+   unconfirmed offsets - because guessing a device name or register
+   meaning here would be exactly the kind of unverified claim this
+   project's rules forbid. Every offset beyond the six confirmed so
+   far halts per FATAL-FIRST until a real access to it is seen. */
 
 namespace {
 
 constexpr uint32_t kUnk11003PhysAddr = 0x11003000u;
 constexpr uint32_t kUnk11003BlockSize = 0x18u;
 
+constexpr uint32_t kReg0 = 0x00u;
+constexpr uint32_t kReg4 = 0x04u;
+constexpr uint32_t kReg8 = 0x08u;
 constexpr uint32_t kRegC = 0x0Cu;
 constexpr uint32_t kReg10 = 0x10u;
 constexpr uint32_t kReg14 = 0x14u;
@@ -60,6 +61,9 @@ public:
 
     void OnReady() override {
         emu_.Get<GuestCpuReset>().RegisterResetListener([this](ResetLineKind) {
+            reg0_ = 0;
+            reg4_ = 0;
+            reg8_ = 0;
             regC_ = 0;
             reg10_ = 0;
             reg14_ = 0;
@@ -72,6 +76,9 @@ public:
 
     uint32_t ReadWord(uint32_t addr) override {
         switch (addr - MmioBase()) {
+            case kReg0:  return reg0_;
+            case kReg4:  return reg4_;
+            case kReg8:  return reg8_;
             case kRegC:  return regC_;
             case kReg10: return reg10_;
             case kReg14: return reg14_;
@@ -81,6 +88,9 @@ public:
 
     void WriteWord(uint32_t addr, uint32_t value) override {
         switch (addr - MmioBase()) {
+            case kReg0:  reg0_ = value;  return;
+            case kReg4:  reg4_ = value;  return;
+            case kReg8:  reg8_ = value;  return;
             case kRegC:  regC_ = value;  return;
             case kReg10: reg10_ = value; return;
             case kReg14: reg14_ = value; return;
@@ -89,17 +99,26 @@ public:
     }
 
     void SaveState(StateWriter& w) override {
+        w.Write("reg0", reg0_);
+        w.Write("reg4", reg4_);
+        w.Write("reg8", reg8_);
         w.Write("regC", regC_);
         w.Write("reg10", reg10_);
         w.Write("reg14", reg14_);
     }
     void RestoreState(StateReader& r) override {
+        r.Read("reg0", reg0_);
+        r.Read("reg4", reg4_);
+        r.Read("reg8", reg8_);
         r.Read("regC", regC_);
         r.Read("reg10", reg10_);
         r.Read("reg14", reg14_);
     }
 
 private:
+    uint32_t reg0_ = 0;
+    uint32_t reg4_ = 0;
+    uint32_t reg8_ = 0;
     uint32_t regC_ = 0;
     uint32_t reg10_ = 0;
     uint32_t reg14_ = 0;
