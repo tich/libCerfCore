@@ -65,8 +65,13 @@ namespace cerfcore {
    this model does not yet drive simulated baud timing off it, the
    computed-vs-stored value does not currently matter; au1300_sys.cpp's
    CPUPLL/POWERCTRL defaulting to 0 only means this divisor computes to 0.
+     - +0x08: written (0) by chevy_mylink nk.exe on UART1 while bringing
+       it up for DMA-driven use (the same boot stage that sets up the
+       I2S DBDMA channels, VA 0x10101008). Same opaque-state reasoning
+       as +0x10/+0x14/+0x18 above: no identity asserted, write-only so
+       far.
    Every other offset chevy_mylink's own boot path has touched so far
-   (+0x00, +0x08, +0x0C) is unconfirmed and halts.
+   (+0x00) is unconfirmed and halts.
 
    The root oscillator Linux cites for every Alchemy board it has seen is
    12MHz (arch/mips/alchemy/common/clock.c ALCHEMY_ROOTCLK_RATE); the real
@@ -104,6 +109,7 @@ protected:
             case kOffLsr:      return ReadReg8(kBaseLsr);
             case kOffUartClk:  return uart_clk_;
             case kOffModCntrl: return mod_cntrl_;
+            case kOffUnk08:    return unk08_;
             case kOffUnk10:    return unk10_;
             case kOffUnk14:    return unk14_;
             case kOffUnk18:    return unk18_;
@@ -117,6 +123,7 @@ protected:
             case kOffLsr:      WriteReg8(kBaseLsr,    static_cast<uint8_t>(value & 0xFFu)); return;
             case kOffUartClk:  uart_clk_  = value;              return;
             case kOffModCntrl: mod_cntrl_ = value & kModCntrlMask; return;
+            case kOffUnk08:    unk08_ = value; return;
             case kOffUnk10:    unk10_ = value; return;
             case kOffUnk14:    unk14_ = value; return;
             case kOffUnk18:    unk18_ = value; return;
@@ -128,6 +135,7 @@ protected:
         Uart16550::SaveState(w);
         w.Write("mod_cntrl", mod_cntrl_);
         w.Write("uart_clk", uart_clk_);
+        w.Write("unk08", unk08_);
         w.Write("unk10", unk10_);
         w.Write("unk14", unk14_);
         w.Write("unk18", unk18_);
@@ -137,6 +145,7 @@ protected:
         Uart16550::RestoreState(r);
         r.Read("mod_cntrl", mod_cntrl_);
         r.Read("uart_clk", uart_clk_);
+        r.Read("unk08", unk08_);
         r.Read("unk10", unk10_);
         r.Read("unk14", unk14_);
         r.Read("unk18", unk18_);
@@ -151,6 +160,7 @@ private:
     static constexpr uint32_t kOffLsr      = 0x1Cu;
     static constexpr uint32_t kOffUartClk  = 0x28u;
     static constexpr uint32_t kOffModCntrl = 0x100u;
+    static constexpr uint32_t kOffUnk08    = 0x08u;
     static constexpr uint32_t kOffUnk10    = 0x10u;
     static constexpr uint32_t kOffUnk14    = 0x14u;
     static constexpr uint32_t kOffUnk18    = 0x18u;
@@ -158,6 +168,7 @@ private:
 
     uint32_t mod_cntrl_ = 0;
     uint32_t uart_clk_  = 0;
+    uint32_t unk08_     = 0;
     uint32_t unk10_     = 0;
     uint32_t unk14_     = 0;
     uint32_t unk18_     = 0;
