@@ -31,7 +31,22 @@ namespace cerfcore {
            "scan_start": 0,            // offset from $sp to start the scan
            "scan_len": 512 }      // how many bytes of stack to scan
        }
+   ],
+   "trace_ranges": [
+     { "start": "0x80105000", "end": "0x80107000", // [start, end) VA window
+       "label": "initclock-search",
+       "max_events": 300 }        // distinct PCs to log before going quiet
    ] }
+
+   trace_ranges logs the opcode word and $ra of every distinct guest PC
+   that falls in [start, end) - dev-mode only (CERF_DEV_MODE, via
+   TraceManager::OnRunLoopIter, which only fires at JIT block-entry
+   points, not every instruction - still useful since a branch target,
+   such as each case of a comparison chain, starts a new block). Meant
+   for finding an indirectly-called function's body or a comparison's
+   constants when the address isn't known up front and find_call_sites
+   can't locate it (e.g. the call site uses jalr through a register,
+   not a fixed jal).
 
    This directly replaces the hand-written TraceManager::OnPc() lambdas
    this project's own board-specific nk_trace.cpp files have used for
@@ -119,6 +134,29 @@ struct Breakpoint {
     uint32_t                   dump_stack_len = 0;
     FindCallSites               find_calls;
 };
+
+#if CERF_DEV_MODE
+struct TraceRange {
+    uint32_t                     start = 0;
+    uint32_t                     end   = 0;
+    std::string                  label;
+    uint32_t                     max_events = 300;
+    uint32_t                     events     = 0;
+    std::unordered_map<uint32_t, bool> seen;
+};
+
+void FireTraceRange(const TraceContext& ctx, const std::shared_ptr<TraceRange>& tr) {
+    if (ctx.pc < tr->start || ctx.pc >= tr->end) return;
+    if (tr->seen.count(ctx.pc)) return;
+    if (tr->events >= tr->max_events) return;
+    tr->seen[ctx.pc] = true;
+    ++tr->events;
+    auto word = ctx.ReadVa32(ctx.pc);
+    LOG(Trace, "scripted_debugger: TRACE '%s' pc=0x%08X opcode=0x%08X ra=0x%08X\n",
+        tr->label.empty() ? "?" : tr->label.c_str(), ctx.pc, word.value_or(0u),
+        ctx.mips ? static_cast<uint32_t>(ctx.mips->gpr[31]) : 0u);
+}
+#endif
 
 void FireBreakpoint(const TraceContext& ctx, const std::shared_ptr<Breakpoint>& bp) {
     ++bp->hits;
@@ -227,13 +265,16 @@ void ScriptedDebugger::OnReady() {
         return;
     }
     const nlohmann::json& j = *parsed;
-    if (!j.contains("breakpoints") || !j["breakpoints"].is_array()) {
-        LOG(Caution, "scripted_debugger: %s has no \"breakpoints\" array\n", path);
+    if ((!j.contains("breakpoints") || !j["breakpoints"].is_array()) &&
+        (!j.contains("trace_ranges") || !j["trace_ranges"].is_array())) {
+        LOG(Caution, "scripted_debugger: %s has no \"breakpoints\" or \"trace_ranges\" array\n",
+            path);
         return;
     }
 
     auto& tm      = emu_.Get<TraceManager>();
     size_t loaded = 0;
+    if (j.contains("breakpoints") && j["breakpoints"].is_array()) {
     for (const auto& bpj : j["breakpoints"]) {
         auto bp = std::make_shared<Breakpoint>();
         bp->pc       = ParseAddr(bpj, "pc");
@@ -275,7 +316,32 @@ void ScriptedDebugger::OnReady() {
         tm.OnPc(pc, [bp](const TraceContext& ctx) { FireBreakpoint(ctx, bp); });
         ++loaded;
     }
+    }
+
+#if CERF_DEV_MODE
+    size_t ranges_loaded = 0;
+    if (j.contains("trace_ranges") && j["trace_ranges"].is_array()) {
+        std::vector<std::shared_ptr<TraceRange>> ranges;
+        for (const auto& trj : j["trace_ranges"]) {
+            auto tr        = std::make_shared<TraceRange>();
+            tr->start      = ParseAddr(trj, "start");
+            tr->end        = ParseAddr(trj, "end");
+            tr->label      = trj.value("label", std::string());
+            tr->max_events = trj.value("max_events", static_cast<uint32_t>(300));
+            ranges.push_back(tr);
+            ++ranges_loaded;
+        }
+        if (!ranges.empty()) {
+            tm.OnRunLoopIter([ranges](const TraceContext& ctx) {
+                for (const auto& tr : ranges) FireTraceRange(ctx, tr);
+            });
+        }
+    }
+    LOG(Boot, "scripted_debugger: loaded %zu breakpoint(s), %zu trace range(s) from %s\n", loaded,
+        ranges_loaded, path);
+#else
     LOG(Boot, "scripted_debugger: loaded %zu breakpoint(s) from %s\n", loaded, path);
+#endif
 }
 
 REGISTER_SERVICE(ScriptedDebugger);
