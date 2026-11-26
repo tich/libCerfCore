@@ -132,6 +132,8 @@ struct DeviceConfig : public Service {
 
     std::string              rom_lumia800_user_area_erase;
 
+    std::string              rom_qcn;
+
     std::string              rom_velo1_rom_upgrade_card;
 
     /* The board's secondary static-bus Spansion NOR flash image (cerf.json
@@ -141,10 +143,12 @@ struct DeviceConfig : public Service {
        supplied, in which case that flash reads as blank/erased (0xFF). */
     std::string              rom_chevy_mylink_nor_update;
 
-    std::string storage_nand = DefaultStorageFileName(config_key::kStorageNand);
-    std::string storage_hdd  = DefaultStorageFileName(config_key::kStorageHdd);
-    std::string storage_emmc = DefaultStorageFileName(config_key::kStorageEmmc);
-    std::string storage_nor  = DefaultStorageFileName(config_key::kStorageNor);
+    std::string storage_nand     = DefaultStorageFileName(config_key::kStorageNand);
+    std::string storage_hdd      = DefaultStorageFileName(config_key::kStorageHdd);
+    std::string storage_emmc     = DefaultStorageFileName(config_key::kStorageEmmc);
+    std::string storage_nor      = DefaultStorageFileName(config_key::kStorageNor);
+    std::string storage_eeprom   = DefaultStorageFileName(config_key::kStorageEeprom);
+    std::string storage_modem_nv = DefaultStorageFileName(config_key::kStorageModemNv);
 
     /* Optional CF images bundled with the ROM (cerf.json
        "additional_packages.compact_flash_cards"); the CF insert menu offers

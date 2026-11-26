@@ -101,7 +101,10 @@ void ConfigLoader::LoadBoardConfig(const json& board, DeviceConfig& config, cons
     for (const auto& [id, value] : c.items()) {
         const std::string         key   = CfgKeyPath({ctx, id});
         const DbBoardConfigParam* param = db.FindBoardConfigParam(id);
-        if (!param) Reader().Fail(path, "'" + key + "' is not a board configuration parameter");
+        if (!param) {
+            LOG(Cfg, "%s is not a board configuration parameter\n", key.c_str());
+            continue;
+        }
         if (value.is_null()) {
             config.board_config.erase(id);
             continue;
@@ -186,6 +189,8 @@ void ConfigLoader::LoadRom(const json& root, DeviceConfig& config, const std::st
     if (r.contains(config_key::kLumia800UserAreaErase))
         config.rom_lumia800_user_area_erase =
             Reader().ReadOptString(r, config_key::kLumia800UserAreaErase, path, config_key::kRom);
+    if (r.contains(config_key::kQcn))
+        config.rom_qcn = Reader().ReadOptString(r, config_key::kQcn, path, config_key::kRom);
     if (r.contains(config_key::kVelo1RomUpgradeCard))
         config.rom_velo1_rom_upgrade_card =
             Reader().ReadOptString(r, config_key::kVelo1RomUpgradeCard, path, config_key::kRom);
@@ -218,10 +223,12 @@ void ConfigLoader::LoadStorage(const json& root, DeviceConfig& config, const std
     if (!s.is_object())
         Reader().Fail(path, std::string("'") + config_key::kStorage + "' must be an object");
 
-    SetNonEmptyString(config.storage_nand, s, config_key::kStorageNand, path, config_key::kStorage);
-    SetNonEmptyString(config.storage_hdd,  s, config_key::kStorageHdd,  path, config_key::kStorage);
-    SetNonEmptyString(config.storage_emmc, s, config_key::kStorageEmmc, path, config_key::kStorage);
-    SetNonEmptyString(config.storage_nor,  s, config_key::kStorageNor,  path, config_key::kStorage);
+    SetNonEmptyString(config.storage_nand,   s, config_key::kStorageNand,   path, config_key::kStorage);
+    SetNonEmptyString(config.storage_hdd,    s, config_key::kStorageHdd,    path, config_key::kStorage);
+    SetNonEmptyString(config.storage_emmc,   s, config_key::kStorageEmmc,   path, config_key::kStorage);
+    SetNonEmptyString(config.storage_nor,    s, config_key::kStorageNor,    path, config_key::kStorage);
+    SetNonEmptyString(config.storage_eeprom, s, config_key::kStorageEeprom, path, config_key::kStorage);
+    SetNonEmptyString(config.storage_modem_nv, s, config_key::kStorageModemNv, path, config_key::kStorage);
 }
 
 template <class Card>
