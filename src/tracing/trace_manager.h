@@ -32,6 +32,12 @@ struct TraceContext {
        path a real guest read uses - so, like a real read, it can have
        side effects (clearing a status bit, popping a FIFO, ...). */
     std::optional<uint32_t> ReadMmioWord(uint32_t va) const;
+
+    /* Writes va, trying host-backed RAM/ROM first and the same
+       PeripheralDispatcher path a real guest write uses on a miss.
+       Returns false if neither reaches it (e.g. a flash region, which
+       TryTranslateWrite refuses, or a truly unmapped address). */
+    bool WriteGuestWord(uint32_t va, uint32_t value) const;
 };
 
 using TraceHandler   = std::function<void(const TraceContext&)>;

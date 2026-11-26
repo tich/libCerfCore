@@ -6,10 +6,13 @@
 #include <cerfengine/mips/mips_cpu_state.h>
 #include "../tracing/trace_manager.h"
 
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -30,6 +33,8 @@ namespace cerfcore {
            "targets": ["0x80108cd0"],  // whose call site is "jal <target>"
            "scan_start": 0,            // offset from $sp to start the scan
            "scan_len": 512 }      // how many bytes of stack to scan
+         },
+         "pause": true           // block the guest CPU here, see below
        }
    ],
    "trace_ranges": [
@@ -53,7 +58,31 @@ namespace cerfcore {
    one-off reverse-engineering (see e.g. chevy_mylink's): those need a
    rebuild for every new probe address or dump; this needs only a JSON
    edit and a re-run. GPR indices accept either a MIPS ABI name (a0, sp,
-   ra, ...) or a bare number (0-31). */
+   ra, ...) or a bare number (0-31).
+
+   "pause": true turns a breakpoint into a real stop: on hit, after
+   logging whatever the breakpoint above it asked for, the guest CPU
+   thread blocks and polls two sidecar files next to CERF_DEBUG_SCRIPT
+   (<script>.state.json and <script>.cmd.json) every 50ms, instead of
+   a socket or FIFO - this process's own tool access is file read/write,
+   a FIFO's open() blocking until both ends connect is a real deadlock
+   risk against a human-paced command sender, and plain files behave
+   the same on the Windows builds this project also targets. The state
+   file is overwritten on every poll with the current GPRs and the last
+   command's result:
+     { "paused": true, "label": "...", "pc": "0x...", "hit": 3,
+       "last_processed_seq": 2, "gpr": {"a0": "0x...", ...},
+       "last_result": {"seq": 2, "action": "read_mem", ...} }
+   Send a command by writing the .cmd.json file with a seq higher than
+   last_processed_seq (stale or repeated seqs are ignored, so re-reads
+   of a half-written file are harmless):
+     {"seq": 1, "action": "continue"}
+     {"seq": 1, "action": "read_mem",  "addr": "0xB0900060", "len": 4}
+     {"seq": 1, "action": "write_mem", "addr": "0xB0900060", "value": "0x2A"}
+   read_mem/write_mem reach RAM first, then MMIO peripheral registers
+   on a miss (same side-effect caveat as dump_mem/ReadMmioWord). Only
+   "continue" resumes the guest; any other action's result lands in the
+   next state-file poll, keeping the CPU blocked. */
 
 namespace {
 
@@ -133,6 +162,8 @@ struct Breakpoint {
     std::vector<int>           dump_astr_regs;
     uint32_t                   dump_stack_len = 0;
     FindCallSites               find_calls;
+    bool                       pause     = false;
+    std::string                script_path;  /* set from CERF_DEBUG_SCRIPT, for the .state.json/.cmd.json sidecar files */
 };
 
 #if CERF_DEV_MODE
@@ -157,6 +188,97 @@ void FireTraceRange(const TraceContext& ctx, const std::shared_ptr<TraceRange>& 
         ctx.mips ? static_cast<uint32_t>(ctx.mips->gpr[31]) : 0u);
 }
 #endif
+
+std::string Hex(uint32_t v) {
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "0x%08X", v);
+    return buf;
+}
+
+struct PauseCommand {
+    uint32_t    seq = 0;
+    std::string action;
+    uint32_t    addr  = 0;
+    uint32_t    value = 0;
+};
+
+bool ReadPauseCommand(const std::string& path, PauseCommand& out) {
+    std::string text;
+    if (CfgReadTextFile(path, text) != HostFileRead::kRead) return false;
+    std::string error;
+    auto parsed = CfgParseJsonObject<nlohmann::json>(text, error);
+    if (!parsed) return false;
+    const nlohmann::json& j = *parsed;
+    out.seq    = j.value("seq", static_cast<uint32_t>(0));
+    out.action = j.value("action", std::string());
+    out.addr   = ParseAddr(j, "addr");
+    out.value  = ParseAddr(j, "value");
+    return true;
+}
+
+void WriteDebugState(const TraceContext& ctx, const std::shared_ptr<Breakpoint>& bp,
+                     uint32_t last_processed_seq, const nlohmann::ordered_json& last_result) {
+    nlohmann::ordered_json j;
+    j["paused"]             = true;
+    j["label"]              = bp->label;
+    j["pc"]                 = Hex(bp->pc);
+    j["hit"]                = bp->hits;
+    j["last_processed_seq"] = last_processed_seq;
+    if (ctx.mips) {
+        nlohmann::ordered_json gpr;
+        for (int i = 0; i < 32; ++i) gpr[kGprNames[i]] = Hex(static_cast<uint32_t>(ctx.mips->gpr[i]));
+        j["gpr"] = gpr;
+    }
+    if (!last_result.is_null()) j["last_result"] = last_result;
+    uint32_t error = 0;
+    CfgWriteJsonFile(bp->script_path + ".state.json", j, error);
+}
+
+/* Blocks the guest CPU thread, polling <script>.cmd.json every 50ms - see
+   the "pause" schema comment above the top of this file for the protocol
+   and why this is file-based rather than a FIFO or socket. */
+void PauseAndWait(const TraceContext& ctx, const std::shared_ptr<Breakpoint>& bp) {
+    const std::string cmd_path = bp->script_path + ".cmd.json";
+    uint32_t                last_seq = 0;
+    nlohmann::ordered_json  last_result;
+    LOG(Boot, "scripted_debugger: PAUSED '%s' pc=0x%08X hit #%llu - write commands to %s\n",
+        bp->label.empty() ? "?" : bp->label.c_str(), bp->pc,
+        static_cast<unsigned long long>(bp->hits), cmd_path.c_str());
+    for (;;) {
+        WriteDebugState(ctx, bp, last_seq, last_result);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        PauseCommand cmd;
+        if (!ReadPauseCommand(cmd_path, cmd)) continue;
+        if (cmd.seq == 0 || cmd.seq <= last_seq) continue;
+        last_seq = cmd.seq;
+        if (cmd.action == "continue") {
+            last_result = nullptr;
+            break;
+        } else if (cmd.action == "read_mem") {
+            auto        w   = ctx.ReadVa32(cmd.addr);
+            const char* src = "ram";
+            if (!w) {
+                w   = ctx.ReadMmioWord(cmd.addr);
+                src = "mmio";
+            }
+            last_result = {{"seq", cmd.seq},
+                           {"action", "read_mem"},
+                           {"addr", Hex(cmd.addr)},
+                           {"value", w ? Hex(*w) : std::string("unreadable")},
+                           {"source", src}};
+        } else if (cmd.action == "write_mem") {
+            const bool ok = ctx.WriteGuestWord(cmd.addr, cmd.value);
+            last_result   = {{"seq", cmd.seq},
+                            {"action", "write_mem"},
+                            {"addr", Hex(cmd.addr)},
+                            {"value", Hex(cmd.value)},
+                            {"ok", ok}};
+        } else {
+            last_result = {{"seq", cmd.seq}, {"error", "unknown action '" + cmd.action + "'"}};
+        }
+    }
+    LOG(Boot, "scripted_debugger: RESUMED '%s'\n", bp->label.empty() ? "?" : bp->label.c_str());
+}
 
 void FireBreakpoint(const TraceContext& ctx, const std::shared_ptr<Breakpoint>& bp) {
     ++bp->hits;
@@ -241,6 +363,8 @@ void FireBreakpoint(const TraceContext& ctx, const std::shared_ptr<Breakpoint>& 
             }
         }
     }
+
+    if (bp->pause) PauseAndWait(ctx, bp);
 }
 
 }  /* namespace */
@@ -282,6 +406,8 @@ void ScriptedDebugger::OnReady() {
         bp->max_hits = bpj.value("max_hits", static_cast<uint64_t>(0));
         bp->dump_gpr = bpj.value("dump_gpr", false);
         bp->dump_stack_len = bpj.value("dump_stack", static_cast<uint32_t>(0));
+        bp->pause        = bpj.value("pause", false);
+        bp->script_path  = path;
 
         if (bpj.contains("dump_mem") && bpj["dump_mem"].is_array()) {
             for (const auto& m : bpj["dump_mem"]) {

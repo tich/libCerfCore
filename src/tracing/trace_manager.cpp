@@ -2,11 +2,13 @@
 
 #include <algorithm>
 
+#include <cerfcore/core/byte_order.h>
 #include <cerfcore/core/cerf_emulator.h>
 #include <cerfcore/core/crc32.h>
 #include <cerfcore/core/fatal.h>
 #include <cerfcore/core/log.h>
 #include <cerfcore/boot/rom_parser_service.h>
+#include <cerfcore/cpu/emulated_memory.h>
 #include "../execution/engine_bridge.h"
 #include "../peripherals/peripheral_dispatcher.h"
 #include <cerfengine/mips/mips_cpu_state.h>
@@ -42,6 +44,19 @@ std::optional<uint32_t> TraceContext::ReadMmioWord(uint32_t va) const {
     auto& dispatcher = emu.Get<PeripheralDispatcher>();
     if (!dispatcher.IsPeripheralAddress(pa)) return std::nullopt;
     return dispatcher.ReadWord(pa);
+}
+
+bool TraceContext::WriteGuestWord(uint32_t va, uint32_t value) const {
+    uint32_t pa = 0;
+    if (!emu.Get<EngineBridge>().Guest().ResolveGuestVaToPa(va, &pa)) return false;
+    if (uint8_t* host = emu.Get<EmulatedMemory>().TryTranslateWrite(pa)) {
+        cerf::le::PutN(host, value, sizeof(uint32_t));
+        return true;
+    }
+    auto& dispatcher = emu.Get<PeripheralDispatcher>();
+    if (!dispatcher.IsPeripheralAddress(pa)) return false;
+    dispatcher.WriteWord(pa, value);
+    return true;
 }
 
 void TraceManager::OnReady() {
