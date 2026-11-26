@@ -157,6 +157,22 @@ constexpr uint32_t kRegClkSrc    = 0x28u;
 constexpr uint32_t kRegRtcMatch0 = 0x4Cu;
 constexpr int       kRtcMatch0IrqSource = 85;
 
+/* AU1300_RTC_INT (GPIC source 84, bank 2 bit 20 = 64+20) - one of the same
+   three sources chevy_mylink's OEMInterruptInit enables (see the comment
+   above), independently confirmed via Linux's arch/mips/include/asm/
+   mach-au1x00/au1000.h: AU1300_RTC_INT = AU1300_FIRST_INT+84, immediately
+   followed by AU1300_RTC_MATCH0_INT at +85 - the same bank/bit this file
+   already uses for kRtcMatch0IrqSource. Per this data book's Section
+   10.2 "Time of Year Clock and Real Time Clock": "Each counter is also
+   able to generate an interrupt on every tick," where a tick is one
+   increment of the (divided) counter - "Divide = TRIM + 1" from the
+   32768 Hz input (Section 10.2.1.5). Modeled as a free-running,
+   self-rearming GuestCycleClock event at that same divided rate,
+   independent of RTCMATCH0 and requiring no guest configuration to
+   start, matching real hardware's "fires on every tick" wording and
+   this interrupt's absence of an associated match register. */
+constexpr int       kRtcTickIrqSource = 84;
+
 class Au1300Sys : public Peripheral {
 public:
     explicit Au1300Sys(CerfEmulator& emu)
@@ -171,6 +187,7 @@ public:
         irq_   = &emu_.Get<Au1300Irq>();
         clock_ = &emu_.Get<GuestCycleClock>();
         rtc_match0_event_ = clock_->Add([this] { OnRtcMatch0(); });
+        rtc_tick_event_   = clock_->Add([this] { OnRtcTick(); });
         emu_.Get<GuestCpuReset>().RegisterResetListener([this](ResetLineKind) {
             cpu_pll_ = kCpuPllReset;
             power_ctrl_ = 0;
@@ -186,9 +203,15 @@ public:
         emu_.Get<PeripheralDispatcher>().Register(this);
         toy_osc_.Attach(kToyClockHz, 1u);
         rtc_osc_.Attach(kToyClockHz, 1u);
+        rtc_osc_.ArmAt(rtc_tick_event_, rtc_osc_.Now() + (rtctrim_ + 1u));
     }
 
     void OnRtcMatch0() { irq_->AssertIrq(kRtcMatch0IrqSource); }
+
+    void OnRtcTick() {
+        irq_->AssertIrq(kRtcTickIrqSource);
+        rtc_osc_.ArmAt(rtc_tick_event_, rtc_osc_.Now() + (rtctrim_ + 1u));
+    }
 
     uint32_t MmioBase() const override { return kSysPhysAddr; }
     uint32_t MmioSize() const override { return kSysBlockSize; }
@@ -266,6 +289,7 @@ public:
         r.Read("clksrc", clksrc_);
         r.Read("rtcmatch0", rtcmatch0_);
         rtc_osc_.ArmAt(rtc_match0_event_, rtcmatch0_);
+        rtc_osc_.ArmAt(rtc_tick_event_, rtc_osc_.Now() + (rtctrim_ + 1u));
     }
 
 private:
@@ -274,6 +298,7 @@ private:
     Au1300Irq*         irq_   = nullptr;
     GuestCycleClock*    clock_ = nullptr;
     GuestCycleClock::Event* rtc_match0_event_ = nullptr;
+    GuestCycleClock::Event* rtc_tick_event_   = nullptr;
     uint32_t cpu_pll_ = kCpuPllReset;
     uint32_t power_ctrl_ = 0;
     uint32_t scratch0_ = 0;

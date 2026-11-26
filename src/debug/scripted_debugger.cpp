@@ -25,6 +25,7 @@ namespace cerfcore {
          "label": "idle save",     // optional, for readability in the log
          "max_hits": 10,           // optional, 0 (default) = unlimited
          "dump_gpr": true,         // optional: log all 32 GPRs
+         "dump_cp0": true,         // optional: log cp0_status/cause/epc/compare/badvaddr
          "dump_mem": [{"addr": "0x8400A014", "len": 64, "label": "tick struct"}],
          "dump_str": ["a0"],       // read these GPRs as UTF-16LE string pointers
          "dump_astr": ["a0"],      // read these GPRs as ASCII string pointers
@@ -157,6 +158,7 @@ struct Breakpoint {
     uint64_t                   max_hits  = 0;  /* 0 = unlimited */
     uint64_t                   hits      = 0;
     bool                       dump_gpr  = false;
+    bool                       dump_cp0  = false;
     std::vector<DumpMemEntry>  dump_mem;
     std::vector<int>           dump_str_regs;
     std::vector<int>           dump_astr_regs;
@@ -228,6 +230,10 @@ void WriteDebugState(const TraceContext& ctx, const std::shared_ptr<Breakpoint>&
         nlohmann::ordered_json gpr;
         for (int i = 0; i < 32; ++i) gpr[kGprNames[i]] = Hex(static_cast<uint32_t>(ctx.mips->gpr[i]));
         j["gpr"] = gpr;
+        j["cp0"] = {{"status", Hex(ctx.mips->cp0_status)},
+                    {"cause", Hex(ctx.mips->cp0_cause)},
+                    {"epc", Hex(ctx.mips->cp0_epc)},
+                    {"compare", Hex(ctx.mips->cp0_compare)}};
     }
     if (!last_result.is_null()) j["last_result"] = last_result;
     uint32_t error = 0;
@@ -294,6 +300,14 @@ void FireBreakpoint(const TraceContext& ctx, const std::shared_ptr<Breakpoint>& 
             LOG(Trace, "scripted_debugger:   $%-4s = 0x%08X\n", kGprNames[i],
                 static_cast<uint32_t>(ctx.mips->gpr[i]));
         }
+    }
+
+    if (bp->dump_cp0) {
+        LOG(Trace, "scripted_debugger:   cp0_status  = 0x%08X\n", ctx.mips->cp0_status);
+        LOG(Trace, "scripted_debugger:   cp0_cause   = 0x%08X\n", ctx.mips->cp0_cause);
+        LOG(Trace, "scripted_debugger:   cp0_epc     = 0x%08X\n", ctx.mips->cp0_epc);
+        LOG(Trace, "scripted_debugger:   cp0_compare = 0x%08X\n", ctx.mips->cp0_compare);
+        LOG(Trace, "scripted_debugger:   cp0_badvaddr= 0x%08X\n", ctx.mips->cp0_badvaddr);
     }
 
     for (const auto& m : bp->dump_mem) {
@@ -405,6 +419,7 @@ void ScriptedDebugger::OnReady() {
         bp->label    = bpj.value("label", std::string());
         bp->max_hits = bpj.value("max_hits", static_cast<uint64_t>(0));
         bp->dump_gpr = bpj.value("dump_gpr", false);
+        bp->dump_cp0 = bpj.value("dump_cp0", false);
         bp->dump_stack_len = bpj.value("dump_stack", static_cast<uint32_t>(0));
         bp->pause        = bpj.value("pause", false);
         bp->script_path  = path;

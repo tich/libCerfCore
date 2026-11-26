@@ -6,7 +6,7 @@
     "tlb_size": 32,
     "min_page_size": "4kb",
     "phys_addr_mask": "0xFFFFFFFF",
-    "device_ip_mask": "0x00000000",
+    "device_ip_mask": "0x00003C00",
     "fpu": false,
     "llsc": true,
     "counter": true,

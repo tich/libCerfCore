@@ -39,6 +39,15 @@ public:
     void     SetIen  (uint32_t bank, uint32_t bits);
     void     ClearIen(uint32_t bank, uint32_t bits);
     uint32_t ReadIpend(uint32_t bank) const;
+    void     ClearIpend(uint32_t bank, uint32_t bits);
+
+    /* GPIC PRIENC: the lowest-numbered pending-and-enabled source across
+       all 4 banks (0 = highest priority), or 127 if none - confirmed
+       directly from chevy_mylink nk.exe's own ISR dispatcher at VA
+       0x8010649C, which reads this register, checks it against 127 as
+       the "nothing pending" case first, then against specific source
+       numbers (84, 85, 75, ...) to pick a handler. */
+    uint32_t ReadPrienc() const;
 
     void SaveState(StateWriter& w);
     void RestoreState(StateReader& r);

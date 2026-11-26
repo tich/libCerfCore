@@ -9,6 +9,8 @@
 #include <cerfcore/socs/guest_cpu_reset.h>
 #include <cerfcore/state/state_stream.h>
 
+#include <bit>
+
 namespace cerfcore {
 
 namespace {
@@ -83,6 +85,21 @@ void Au1300Irq::ClearIen(uint32_t bank, uint32_t bits) {
 uint32_t Au1300Irq::ReadIpend(uint32_t bank) const {
     std::lock_guard<std::mutex> lk(mtx_);
     return ipend_[bank];
+}
+
+void Au1300Irq::ClearIpend(uint32_t bank, uint32_t bits) {
+    std::lock_guard<std::mutex> lk(mtx_);
+    ipend_[bank] &= ~bits;
+    RecomputeLocked();
+}
+
+uint32_t Au1300Irq::ReadPrienc() const {
+    std::lock_guard<std::mutex> lk(mtx_);
+    for (uint32_t bank = 0; bank < kBanks; ++bank) {
+        const uint32_t pending = ipend_[bank] & ien_[bank];
+        if (pending != 0u) return bank * 32u + static_cast<uint32_t>(std::countr_zero(pending));
+    }
+    return 127u;
 }
 
 void Au1300Irq::SaveState(StateWriter& w) {

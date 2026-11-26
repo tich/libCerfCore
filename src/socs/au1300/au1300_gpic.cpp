@@ -62,9 +62,14 @@ namespace cerfcore {
    RTC_MATCH0_INT periodically from a real RTC-counter/match comparison,
    the only one of these three with an obvious periodic-tick role.
 
-   PRIENC, DEVSEL/DEVCLR, and RSTVAL are not implemented yet - no real
-   access to either has been seen, so they halt per FATAL-FIRST until
-   one is. */
+   PRIENC (+0x30) - the lowest-numbered pending-and-enabled source
+   across all 4 banks, or 127 if none - is confirmed directly from
+   chevy_mylink nk.exe's own ISR dispatcher at VA 0x8010649C: it reads
+   this register, checks it against 127 first (nothing pending), then
+   against specific source numbers to pick a handler.
+
+   DEVSEL/DEVCLR and RSTVAL are not implemented yet - no real access to
+   either has been seen, so they halt per FATAL-FIRST until one is. */
 
 namespace {
 
@@ -74,6 +79,7 @@ constexpr uint32_t kGpicBlockSize = 0x1200u;  /* through PINCFG[127] (+0x1000..+
 constexpr uint32_t kPinVal    = 0x00u;
 constexpr uint32_t kPinValClr = 0x10u;
 constexpr uint32_t kIpend    = 0x20u;  /* banks 0-3: +0x20, +0x24, +0x28, +0x2C */
+constexpr uint32_t kPriEnc   = 0x30u;  /* lowest-numbered pending&enabled source, or 127 */
 constexpr uint32_t kIen      = 0x40u;  /* banks 0-3: +0x40, +0x44, +0x48, +0x4C */
 constexpr uint32_t kIdis     = 0x50u;  /* banks 0-3: +0x50, +0x54, +0x58, +0x5C */
 constexpr uint32_t kDmaSel   = 0x60u;  /* banks 0-3: +0x60, +0x64, +0x68, +0x6C */
@@ -105,6 +111,7 @@ public:
         const uint32_t off = addr - MmioBase();
         if (off == kPinVal) return pinval_;
         if (off >= kIpend && off < kIpend + 16u) return irq_->ReadIpend((off - kIpend) / 4u);
+        if (off == kPriEnc) return irq_->ReadPrienc();
         if (off >= kIen && off < kIen + 16u)    return irq_->ReadIen((off - kIen) / 4u);
         if (off >= kDmaSel && off < kDmaSel + 16u) return dmasel_[(off - kDmaSel) / 4u];
         if (off >= kPinCfg && off < kPinCfg + kNumSources * 4u) {
@@ -117,6 +124,10 @@ public:
         const uint32_t off = addr - MmioBase();
         if (off == kPinVal)    { pinval_ = value;      return; }
         if (off == kPinValClr) { pinval_ &= ~value;    return; }
+        if (off >= kIpend && off < kIpend + 16u) {
+            irq_->ClearIpend((off - kIpend) / 4u, value);
+            return;
+        }
         if (off >= kIen && off < kIen + 16u) { irq_->SetIen((off - kIen) / 4u, value); return; }
         if (off >= kIdis && off < kIdis + 16u) { irq_->ClearIen((off - kIdis) / 4u, value); return; }
         if (off >= kDmaSel && off < kDmaSel + 16u) { dmasel_[(off - kDmaSel) / 4u] = value; return; }
