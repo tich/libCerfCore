@@ -8,6 +8,7 @@
 #include <cerfcore/core/log.h>
 #include <cerfcore/boot/rom_parser_service.h>
 #include "../execution/engine_bridge.h"
+#include "../peripherals/peripheral_dispatcher.h"
 #include <cerfengine/mips/mips_cpu_state.h>
 #include <cerfengine/sh/sh_cpu_state.h>
 
@@ -33,6 +34,14 @@ std::optional<uint32_t> TraceContext::ReadVa32(uint32_t va) const {
     auto hi = ReadVa16(va + 2);
     if (!lo || !hi) return std::nullopt;
     return static_cast<uint32_t>(*lo) | (static_cast<uint32_t>(*hi) << 16);
+}
+
+std::optional<uint32_t> TraceContext::ReadMmioWord(uint32_t va) const {
+    uint32_t pa = 0;
+    if (!emu.Get<EngineBridge>().Guest().ResolveGuestVaToPa(va, &pa)) return std::nullopt;
+    auto& dispatcher = emu.Get<PeripheralDispatcher>();
+    if (!dispatcher.IsPeripheralAddress(pa)) return std::nullopt;
+    return dispatcher.ReadWord(pa);
 }
 
 void TraceManager::OnReady() {

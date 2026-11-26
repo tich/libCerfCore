@@ -139,9 +139,22 @@ void FireBreakpoint(const TraceContext& ctx, const std::shared_ptr<Breakpoint>& 
     for (const auto& m : bp->dump_mem) {
         LOG(Trace, "scripted_debugger:   mem '%s' @0x%08X:\n", m.label.c_str(), m.addr);
         for (uint32_t off = 0; off < m.len; off += 4u) {
+            /* RAM/ROM first (no side effects); MMIO peripheral registers
+               only if that misses, since reading one can have side effects
+               (clearing a status bit, popping a FIFO, ...) same as a real
+               guest read would. */
             auto w = ctx.ReadVa32(m.addr + off);
-            LOG(Trace, "scripted_debugger:     [0x%08X] = 0x%08X\n", m.addr + off,
-                w.value_or(0xDEADDEADu));
+            const char* source = "ram";
+            if (!w) {
+                w      = ctx.ReadMmioWord(m.addr + off);
+                source = "mmio";
+            }
+            if (w) {
+                LOG(Trace, "scripted_debugger:     [0x%08X] = 0x%08X (%s)\n", m.addr + off, *w,
+                    source);
+            } else {
+                LOG(Trace, "scripted_debugger:     [0x%08X] = <unreadable>\n", m.addr + off);
+            }
         }
     }
 

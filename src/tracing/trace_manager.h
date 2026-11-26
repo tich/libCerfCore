@@ -26,6 +26,12 @@ struct TraceContext {
     std::optional<uint8_t>  ReadVa8 (uint32_t va) const;
     std::optional<uint16_t> ReadVa16(uint32_t va) const;
     std::optional<uint32_t> ReadVa32(uint32_t va) const;
+
+    /* Unlike ReadVa*, which only reach host-backed RAM/ROM, this reaches
+       MMIO peripheral registers too, via the same PeripheralDispatcher
+       path a real guest read uses - so, like a real read, it can have
+       side effects (clearing a status bit, popping a FIFO, ...). */
+    std::optional<uint32_t> ReadMmioWord(uint32_t va) const;
 };
 
 using TraceHandler   = std::function<void(const TraceContext&)>;
