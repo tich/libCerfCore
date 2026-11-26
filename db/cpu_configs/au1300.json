@@ -1,7 +1,7 @@
 {
   "soc_id": "au1300",
   "values": {
-    "prid": "0x00019300",
+    "prid": "0x800C8000",
     "isa_level": "mips32",
     "tlb_size": 32,
     "min_page_size": "4kb",

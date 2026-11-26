@@ -97,6 +97,18 @@ constexpr uint32_t kSysPhysAddr  = 0x10900000u;
 constexpr uint32_t kSysBlockSize = 0x00000080u;  /* up through SYS_SLEEP (+0x7C) */
 
 constexpr uint32_t kRegCpuPll    = 0x60u;
+
+/* nk.exe's InitClock (0x80108114-0x80108124 in this ROM) reads SYS_CPUPLL,
+   masks it to the low 7 bits, and multiplies by a hardcoded 12 (confirmed
+   live: $s3=12 at the multiply) to print "@ %dMHZ" - i.e. CPUPLL holds a
+   12MHz-reference PLL multiplier, not a frequency itself. On real hardware
+   this is a board-strapped value already set by an earlier boot stage we
+   don't emulate, so a reset value of 0 (silently read as "0MHz") is the
+   actual bug, not a faithful reset state. 42*12=504MHz, the closest clean
+   multiple of 12 to this project's existing (ungrounded-at-the-time)
+   500MHz core clock choice in Au1300CoreClock - kept until real evidence
+   gives a different exact multiplier. */
+constexpr uint32_t kCpuPllReset  = 42u;
 constexpr uint32_t kRegPowerCtrl = 0x3Cu;
 constexpr uint32_t kRegScratch0  = 0x18u;
 constexpr uint32_t kRegScratch1  = 0x1Cu;
@@ -160,7 +172,7 @@ public:
         clock_ = &emu_.Get<GuestCycleClock>();
         rtc_match0_event_ = clock_->Add([this] { OnRtcMatch0(); });
         emu_.Get<GuestCpuReset>().RegisterResetListener([this](ResetLineKind) {
-            cpu_pll_ = 0;
+            cpu_pll_ = kCpuPllReset;
             power_ctrl_ = 0;
             scratch0_ = 0;
             scratch1_ = 0;
@@ -262,7 +274,7 @@ private:
     Au1300Irq*         irq_   = nullptr;
     GuestCycleClock*    clock_ = nullptr;
     GuestCycleClock::Event* rtc_match0_event_ = nullptr;
-    uint32_t cpu_pll_ = 0;
+    uint32_t cpu_pll_ = kCpuPllReset;
     uint32_t power_ctrl_ = 0;
     uint32_t scratch0_ = 0;
     uint32_t scratch1_ = 0;
