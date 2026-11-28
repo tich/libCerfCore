@@ -78,8 +78,14 @@ public:
 
     void OnPortConnectChanged(int port_index) override;
 
+    /* Exposed so au1300_ehci_cap.cpp can forward capbase+CAPLENGTH-
+       addressed operational-register accesses (from the 0x14020000
+       capability block) into this same controller's register state -
+       see that file's comment for why both address windows exist. */
+    static constexpr uint32_t kOperationalBase = 0x14022000u;
+
 private:
-    static constexpr uint32_t kBase = 0x14022000u;
+    static constexpr uint32_t kBase = kOperationalBase;
     static constexpr uint32_t kSize = 0x00000100u;  /* generous; only +0x00..+0x48 confirmed */
     static constexpr uint32_t kPortCount = 4u;
     static constexpr uint32_t kOffPortsc1 = 0x44u;
