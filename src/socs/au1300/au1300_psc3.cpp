@@ -63,11 +63,14 @@ namespace cerfcore {
    Ready/Request in SMBus terms) removes it. Same always-ready-once-
    enabled reasoning as bits 0 and 2.
 
-   Only PSC_SEL, PSC_CTRL, the status bits above, and the three
-   timing/divisor registers (stored but not yet interpreted) are modeled;
-   every other PSC3 or I2C-core register (FIFO, transaction control,
-   address/data) halts per FATAL-FIRST until a real access to one is
-   seen. */
+   Only PSC_SEL, PSC_CTRL, the status bits above, and four timing/
+   divisor registers (+0x08/+0x0C/+0x10/+0x20, all stored but not yet
+   interpreted - +0x10 confirmed by a later, real SMBus transaction
+   this project reached once LCD/display init completed and the
+   driver started actually talking to an I2C-attached device) are
+   modeled; every other PSC3 or I2C-core register (FIFO, transaction
+   control, address/data) halts per FATAL-FIRST until a real access
+   to one is seen. */
 
 namespace {
 
@@ -78,6 +81,7 @@ constexpr uint32_t kRegSel   = 0x00u;
 constexpr uint32_t kRegCtrl  = 0x04u;
 constexpr uint32_t kRegTmr0  = 0x08u;
 constexpr uint32_t kRegTmr1  = 0x0Cu;
+constexpr uint32_t kRegTmr1b = 0x10u;
 constexpr uint32_t kRegStat  = 0x14u;
 constexpr uint32_t kRegTmr2  = 0x20u;
 constexpr uint32_t kCtrlEnable = 3u;
@@ -98,6 +102,7 @@ public:
             ctrl_ = 0;
             tmr0_ = 0;
             tmr1_ = 0;
+            tmr1b_ = 0;
             tmr2_ = 0;
         });
         emu_.Get<PeripheralDispatcher>().Register(this);
@@ -112,6 +117,7 @@ public:
             case kRegCtrl: return ctrl_;
             case kRegTmr0: return tmr0_;
             case kRegTmr1: return tmr1_;
+            case kRegTmr1b: return tmr1b_;
             case kRegTmr2: return tmr2_;
             case kRegStat: return (ctrl_ & kCtrlEnable) ? kStatReady : 0u;
             default: HaltUnsupportedAccess("ReadWord", addr, 0);
@@ -124,6 +130,7 @@ public:
             case kRegCtrl: ctrl_ = value; return;
             case kRegTmr0: tmr0_ = value; return;
             case kRegTmr1: tmr1_ = value; return;
+            case kRegTmr1b: tmr1b_ = value; return;
             case kRegTmr2: tmr2_ = value; return;
             default: HaltUnsupportedAccess("WriteWord", addr, value);
         }
@@ -134,6 +141,7 @@ public:
         w.Write("ctrl", ctrl_);
         w.Write("tmr0", tmr0_);
         w.Write("tmr1", tmr1_);
+        w.Write("tmr1b", tmr1b_);
         w.Write("tmr2", tmr2_);
     }
     void RestoreState(StateReader& r) override {
@@ -141,6 +149,7 @@ public:
         r.Read("ctrl", ctrl_);
         r.Read("tmr0", tmr0_);
         r.Read("tmr1", tmr1_);
+        r.Read("tmr1b", tmr1b_);
         r.Read("tmr2", tmr2_);
     }
 
@@ -149,6 +158,7 @@ private:
     uint32_t ctrl_ = 0;
     uint32_t tmr0_ = 0;
     uint32_t tmr1_ = 0;
+    uint32_t tmr1b_ = 0;
     uint32_t tmr2_ = 0;
 };
 
