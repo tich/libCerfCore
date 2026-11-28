@@ -155,6 +155,14 @@ constexpr uint32_t kRegClkSrc    = 0x28u;
    64+21). The OS's own ISR is expected to rewrite RTCMATCH0 for the next
    tick, same as the real hardware's free-running counter requires. */
 constexpr uint32_t kRegRtcMatch0 = 0x4Cu;
+/* SYS_TOYMATCH2, Linux au1000.h AU1000_SYS_TOYMATCH2 - confirmed live
+   (chevy_mylink nk.exe writes a TOY-range value to +0x10 once boot
+   reaches BYOMLoader's storage-mount retry loop). Matches the TOY
+   clock, the same role kRegRtcMatch0 plays for the RTC clock, but no
+   real access has yet shown this project needs it to actually fire
+   an interrupt - stored verbatim only, same minimal-first approach
+   as every other newly-confirmed register this session. */
+constexpr uint32_t kRegToyMatch2 = 0x10u;
 constexpr int       kRtcMatch0IrqSource = 85;
 
 /* AU1300_RTC_INT (GPIC source 84, bank 2 bit 20 = 64+20) - one of the same
@@ -231,6 +239,7 @@ public:
             case kRegFreqCtrl0: return freqctrl0_;
             case kRegClkSrc:    return clksrc_;
             case kRegRtcMatch0: return rtcmatch0_;
+            case kRegToyMatch2: return toymatch2_;
             default: HaltUnsupportedAccess("ReadWord", addr, 0);
         }
     }
@@ -254,6 +263,7 @@ public:
                 irq_->DeAssertIrq(kRtcMatch0IrqSource);
                 rtc_osc_.ArmAt(rtc_match0_event_, value);
                 return;
+            case kRegToyMatch2: toymatch2_ = value; return;
             default: HaltUnsupportedAccess("WriteWord", addr, value);
         }
     }
@@ -270,6 +280,7 @@ public:
         w.Write("freqctrl0", freqctrl0_);
         w.Write("clksrc", clksrc_);
         w.Write("rtcmatch0", rtcmatch0_);
+        w.Write("toymatch2", toymatch2_);
         toy_osc_.Save(w, "toy_");
         rtc_osc_.Save(w, "rtc_");
     }
@@ -288,6 +299,7 @@ public:
         r.Read("freqctrl0", freqctrl0_);
         r.Read("clksrc", clksrc_);
         r.Read("rtcmatch0", rtcmatch0_);
+        r.Read("toymatch2", toymatch2_);
         rtc_osc_.ArmAt(rtc_match0_event_, rtcmatch0_);
         rtc_osc_.ArmAt(rtc_tick_event_, rtc_osc_.Now() + (rtctrim_ + 1u));
     }
@@ -310,6 +322,7 @@ private:
     uint32_t freqctrl0_ = 0;
     uint32_t clksrc_ = 0;
     uint32_t rtcmatch0_ = 0;
+    uint32_t toymatch2_ = 0;
 };
 
 }  /* namespace */
