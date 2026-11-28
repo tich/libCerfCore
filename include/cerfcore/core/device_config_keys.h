@@ -32,6 +32,7 @@ inline constexpr char kStorageEmmc[]           = "emmc";
 inline constexpr char kStorageNor[]            = "nor";
 inline constexpr char kStorageEeprom[]         = "eeprom";
 inline constexpr char kStorageModemNv[]        = "modem_nv";
+inline constexpr char kStorageSdCard[]         = "sdcard";
 inline constexpr char kNetwork[]               = "network";
 inline constexpr char kEnabled[]               = "enabled";
 inline constexpr char kMac[]                   = "mac";
